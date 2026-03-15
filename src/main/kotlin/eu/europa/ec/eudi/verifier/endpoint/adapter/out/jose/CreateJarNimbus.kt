@@ -131,6 +131,7 @@ class CreateJarNimbus : CreateJar {
             claim(OpenId4VPSpec.NONCE, r.nonce)
             optionalClaim(OpenId4VPSpec.CLIENT_METADATA, clientMetaData?.toJSONObject())
             optionalClaim(OpenId4VPSpec.RESPONSE_URI, r.responseUri?.toExternalForm())
+            optionalClaim(OpenId4VPSpec.EXPECTED_ORIGINS, r.expectedOrigins?.takeIf { it.isNotEmpty() })
             optionalClaim(OpenId4VPSpec.DCQL_QUERY, r.dcqlQuery?.toJackson())
             optionalClaim(OpenId4VPSpec.TRANSACTION_DATA, r.transactionData?.toJackson())
             optionalClaim(OpenId4VPSpec.WALLET_NONCE, walletNonce)
@@ -142,9 +143,14 @@ class CreateJarNimbus : CreateJar {
         c: ClientMetaData,
         responseMode: ResponseMode,
     ): OIDCClientMetadata {
+        val ephemeralKey = when (responseMode) {
+            is ResponseMode.DirectPostJwt -> responseMode.ephemeralResponseEncryptionKey
+            is ResponseMode.DcApiJwt -> responseMode.ephemeralResponseEncryptionKey
+            else -> null
+        }
         return OIDCClientMetadata().apply {
-            if (responseMode is ResponseMode.DirectPostJwt) {
-                jwkSet = JWKSet(listOf(responseMode.ephemeralResponseEncryptionKey)).toPublicJWKSet()
+            if (ephemeralKey != null) {
+                jwkSet = JWKSet(listOf(ephemeralKey)).toPublicJWKSet()
                 setCustomField(
                     OpenId4VPSpec.ENCRYPTED_RESPONSE_ENC_VALUES_SUPPORTED,
                     c.responseEncryptionOption.encryptionMethods.map { it.name }.toList(),
