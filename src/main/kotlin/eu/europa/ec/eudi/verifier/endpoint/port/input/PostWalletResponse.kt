@@ -315,7 +315,7 @@ class PostWalletResponseLive(
                     WalletResponseValidationError.UnexpectedResponseMode(
                         presentation.requestId,
                         expected = ResponseModeOption.DcApi,
-                        actual = ResponseModeOption.DirectPostJwt,
+                        actual = ResponseModeOption.DcApiJwt,
                     )
                 }
                 walletResponse.response
