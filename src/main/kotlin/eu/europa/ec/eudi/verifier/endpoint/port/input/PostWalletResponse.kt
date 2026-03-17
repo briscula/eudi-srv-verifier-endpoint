@@ -309,6 +309,44 @@ class PostWalletResponseLive(
                         }
                 }
             }
+
+            is ResponseMode.DcApi -> {
+                ensure(walletResponse is AuthorisationResponse.DirectPost) {
+                    WalletResponseValidationError.UnexpectedResponseMode(
+                        presentation.requestId,
+                        expected = ResponseModeOption.DcApi,
+                        actual = ResponseModeOption.DcApiJwt,
+                    )
+                }
+                walletResponse.response
+            }
+
+            is ResponseMode.DcApiJwt -> {
+                when (walletResponse) {
+                    is AuthorisationResponse.DirectPost -> {
+                        ensure(walletResponse.isErrorResponse()) {
+                            WalletResponseValidationError.UnexpectedResponseMode(
+                                presentation.requestId,
+                                expected = ResponseModeOption.DcApiJwt,
+                                actual = ResponseModeOption.DirectPost,
+                            )
+                        }
+                        walletResponse.response
+                    }
+
+                    is AuthorisationResponse.DirectPostJwt ->
+                        verifyEncryptedResponse(
+                            ephemeralResponseEncryptionKey = responseMode.ephemeralResponseEncryptionKey,
+                            encryptedResponse = walletResponse.encryptedResponse,
+                            apv = presentation.nonce,
+                        ).getOrElse {
+                            when (it) {
+                                is BadJOSEException -> raise(WalletResponseValidationError.InvalidEncryptedResponse(it))
+                                else -> throw it
+                            }
+                        }
+                }
+            }
         }
     }
 
@@ -316,8 +354,17 @@ class PostWalletResponseLive(
         presentation: RequestObjectRetrieved,
         responseObject: AuthorisationResponseTO,
     ): Either<WalletResponseValidationError, Submitted> = either {
-        // Verify response `state` is RequestId
-        ensure(presentation.requestId.value == responseObject.state) { WalletResponseValidationError.IncorrectState }
+        // Verify response `state` is RequestId.
+        // For DC API modes the browser provides origin binding via the DC API itself, and wallets
+        // (e.g. CMWallet) do not echo `state` back in the authorization response.  Only enforce the
+        // check when state is actually present in the response, or when using a non-DC-API mode
+        // where state is mandatory.
+        val stateOk = when (presentation.responseMode) {
+            is ResponseMode.DcApi, is ResponseMode.DcApiJwt ->
+                responseObject.state == null || presentation.requestId.value == responseObject.state
+            else -> presentation.requestId.value == responseObject.state
+        }
+        ensure(stateOk) { WalletResponseValidationError.IncorrectState }
 
         // add the wallet response to the presentation
         val walletResponse = responseObject.toDomain(
@@ -378,6 +425,8 @@ private val RequestObjectRetrieved.ephemeralResponseEncryptionKeyOrNull: JWK?
     get() = when (responseMode) {
         ResponseMode.DirectPost -> null
         is ResponseMode.DirectPostJwt -> responseMode.ephemeralResponseEncryptionKey
+        is ResponseMode.DcApi -> null
+        is ResponseMode.DcApiJwt -> responseMode.ephemeralResponseEncryptionKey
     }
 
 private fun Logger.debug(requestId: RequestId, walletResponse: AuthorisationResponse) {

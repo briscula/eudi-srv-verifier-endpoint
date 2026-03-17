@@ -325,6 +325,8 @@ internal class WalletResponseDirectPostJwtValidationsEnabledTest {
         "verifier.validation.sdJwtVc.statusCheck.enabled=false",
         "verifier.attestation-classifications.eaa[0].use-case=mDL",
         "verifier.attestation-classifications.eaa[0].doc-types=org.iso.18013.5.1.mDL",
+        "verifier.originalClientId=Verifier",
+        "verifier.clientIdPrefix=pre-registered",
     ],
 )
 internal class DeviceResponseValidationTest {

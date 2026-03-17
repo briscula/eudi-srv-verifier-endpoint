@@ -50,14 +50,31 @@ sealed interface HandoverInfo {
         operator fun invoke(
             presentation: Presentation.RequestObjectRetrieved,
             config: VerifierConfig,
-        ): HandoverInfo = OpenID4VPHandoverInfo(
-            clientId = config.verifierId,
-            nonce = presentation.nonce,
-            ephemeralEncryptionKey = when (val responseMode = presentation.responseMode) {
-                ResponseMode.DirectPost -> null
-                is ResponseMode.DirectPostJwt -> responseMode.ephemeralResponseEncryptionKey.toPublicJWK()
-            },
-            responseUri = config.responseUriBuilder(presentation.requestId),
-        )
+        ): HandoverInfo = when (val responseMode = presentation.responseMode) {
+            ResponseMode.DirectPost -> OpenID4VPHandoverInfo(
+                clientId = config.verifierId,
+                nonce = presentation.nonce,
+                ephemeralEncryptionKey = null,
+                responseUri = config.responseUriBuilder(presentation.requestId),
+            )
+            is ResponseMode.DirectPostJwt -> OpenID4VPHandoverInfo(
+                clientId = config.verifierId,
+                nonce = presentation.nonce,
+                ephemeralEncryptionKey = responseMode.ephemeralResponseEncryptionKey.toPublicJWK(),
+                responseUri = config.responseUriBuilder(presentation.requestId),
+            )
+            is ResponseMode.DcApi -> OpenID4VPDCAPIHandoverInfo(
+                origin = responseMode.expectedOrigins.firstOrNull()?.let { java.net.URL(it) }
+                    ?: error("DC API response mode requires at least one expected origin"),
+                nonce = presentation.nonce,
+                ephemeralEncryptionKey = null,
+            )
+            is ResponseMode.DcApiJwt -> OpenID4VPDCAPIHandoverInfo(
+                origin = responseMode.expectedOrigins.firstOrNull()?.let { java.net.URL(it) }
+                    ?: error("DC API response mode requires at least one expected origin"),
+                nonce = presentation.nonce,
+                ephemeralEncryptionKey = responseMode.ephemeralResponseEncryptionKey.toPublicJWK(),
+            )
+        }
     }
 }

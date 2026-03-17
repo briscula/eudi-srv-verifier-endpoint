@@ -73,7 +73,7 @@ object TestContext {
             ),
         ),
     )
-    private val accessCertificate: AccessCertificate = AccessCertificate(ecJwk, JWSAlgorithm.ES512)
+    private val accessCertificate: AccessCertificate = AccessCertificate(ecJwk, JWSAlgorithm.ES256)
     val verifierId = VerifierId.X509SanDns("verifier", accessCertificate)
     val createJar: CreateJarNimbus = CreateJarNimbus()
     val signedRequestObjectVerifier: JWSVerifier = ECDSAVerifier(ecJwk)
