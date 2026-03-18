@@ -435,6 +435,9 @@ internal class AppBeans : BeanRegistrarDsl({
                 }
             }
             csrf { disable() } // cross-site request forgery disabled
+            authorizeExchange {
+                authorize(anyExchange, permitAll)
+            }
         }
     }
 })
