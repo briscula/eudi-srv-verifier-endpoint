@@ -435,6 +435,9 @@ internal class AppBeans : BeanRegistrarDsl({
                 }
             }
             csrf { disable() } // cross-site request forgery disabled
+            authorizeExchange {
+                authorize(anyExchange, permitAll)
+            }
         }
     }
 })
@@ -529,6 +532,14 @@ private fun verifierConfig(environment: Environment): VerifierConfig {
     val responseModeOption =
         environment.getProperty("verifier.response.mode", ResponseModeOption::class.java)
             ?: ResponseModeOption.DirectPostJwt
+    val expectedOrigins = environment.getOptionalList(
+        "verifier.expected-origins",
+        filter = String::isNotBlank,
+        transform = String::trim,
+    ) ?: emptyList()
+    require(responseModeOption !in listOf(ResponseModeOption.DcApi, ResponseModeOption.DcApiJwt) || expectedOrigins.isNotEmpty()) {
+        "'verifier.expected-origins' must not be empty when response mode is $responseModeOption"
+    }
 
     val maxAge = environment.getProperty("verifier.maxAge")?.let { Duration.parse(it) } ?: 5.minutes
 
@@ -550,6 +561,7 @@ private fun verifierConfig(environment: Environment): VerifierConfig {
         requestUriMethod = requestUriMethod,
         responseUriBuilder = WalletApi.directPost(publicUrl),
         responseModeOption = responseModeOption,
+        expectedOrigins = expectedOrigins,
         maxAge = maxAge,
         clientMetaData = environment.clientMetaData(),
         transactionDataHashAlgorithm = transactionDataHashAlgorithm,

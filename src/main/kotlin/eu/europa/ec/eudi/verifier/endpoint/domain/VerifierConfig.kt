@@ -71,6 +71,8 @@ enum class RequestUriMethod {
 enum class ResponseModeOption {
     DirectPost,
     DirectPostJwt,
+    DcApi,
+    DcApiJwt,
 }
 
 sealed interface ResponseMode {
@@ -84,12 +86,32 @@ sealed interface ResponseMode {
             require(ephemeralResponseEncryptionKey.isPrivate)
         }
     }
+
+    data class DcApi(
+        val expectedOrigins: List<String>,
+    ) : ResponseMode {
+        init {
+            require(expectedOrigins.isNotEmpty()) { "expectedOrigins must not be empty for DcApi response mode" }
+        }
+    }
+
+    data class DcApiJwt(
+        val expectedOrigins: List<String>,
+        val ephemeralResponseEncryptionKey: JWK,
+    ) : ResponseMode {
+        init {
+            require(expectedOrigins.isNotEmpty()) { "expectedOrigins must not be empty for DcApiJwt response mode" }
+            require(ephemeralResponseEncryptionKey.isPrivate)
+        }
+    }
 }
 
 val ResponseMode.option: ResponseModeOption
     get() = when (this) {
         ResponseMode.DirectPost -> ResponseModeOption.DirectPost
         is ResponseMode.DirectPostJwt -> ResponseModeOption.DirectPostJwt
+        is ResponseMode.DcApi -> ResponseModeOption.DcApi
+        is ResponseMode.DcApiJwt -> ResponseModeOption.DcApiJwt
     }
 
 data class ResponseEncryptionOption(
@@ -293,6 +315,7 @@ data class VerifierConfig(
     val requestJarOption: EmbedOption<RequestId>,
     val requestUriMethod: RequestUriMethod,
     val responseModeOption: ResponseModeOption,
+    val expectedOrigins: List<String>,
     val responseUriBuilder: PresentationRelatedUrlBuilder<RequestId>,
     val maxAge: Duration,
     val clientMetaData: ClientMetaData,

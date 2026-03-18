@@ -43,6 +43,9 @@ object OpenId4VPSpec {
 
     const val RESPONSE_MODE_DIRECT_POST: String = "direct_post"
     const val RESPONSE_MODE_DIRECT_POST_JWT: String = "direct_post.jwt"
+    const val RESPONSE_MODE_DC_API: String = "dc_api"
+    const val RESPONSE_MODE_DC_API_JWT: String = "dc_api.jwt"
+    const val EXPECTED_ORIGINS: String = "expected_origins"
 
     const val CLIENT_METADATA: String = "client_metadata"
 

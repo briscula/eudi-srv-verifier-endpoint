@@ -496,7 +496,7 @@ private fun HandoverInfo.toHandover(
                 origin.toExternalForm().toDataElement(),
                 nonce.value.toDataElement(),
                 ephemeralEncryptionKey?.computeThumbprint()?.decode()?.toDataElement() ?: NullElement(),
-            )
+            ).toDataElement()
             OpenId4VPSpec.OPENID4VP_DCAPI_HANDOVER_IDENTIFIER to cbor.encodeToByteArray(element)
         }
     }
