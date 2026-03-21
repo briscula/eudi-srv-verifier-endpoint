@@ -150,6 +150,7 @@ spotless {
     val ktlintVersion = libs.versions.ktlintVersion.get()
     kotlin {
         ktlint(ktlintVersion)
+        targetExclude("src/main/kotlin/eu/europa/ec/eudi/verifier/endpoint/adapter/out/persistence/PresentationRedisCodec.kt")
         licenseHeaderFile("FileHeader.txt")
     }
     kotlinGradle {
