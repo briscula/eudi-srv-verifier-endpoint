@@ -69,6 +69,8 @@ To start the service locally you can execute
 The backend now uses Redis for persistence by default. The sample `application.properties`
 is configured for a hosted Redis Cloud instance through Spring Data Redis / Lettuce.
 Credentials should be provided through environment variables, not committed config.
+Presentation lifetime is still controlled by the verifier timeout and cleanup settings,
+not by Redis key expiry.
 To run locally, set:
 ```bash
 SPRING_DATA_REDIS_HOST=<HOST>
