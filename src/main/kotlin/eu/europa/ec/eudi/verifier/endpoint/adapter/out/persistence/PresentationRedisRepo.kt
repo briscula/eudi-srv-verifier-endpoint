@@ -31,7 +31,6 @@ import org.springframework.data.redis.core.ReactiveStringRedisTemplate
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
-import java.time.Duration
 import java.util.Base64
 import kotlin.time.Instant
 import kotlin.time.Instant.Companion.fromEpochMilliseconds
@@ -41,7 +40,6 @@ import kotlinx.coroutines.reactor.awaitSingleOrNull
 class PresentationRedisRepo(
     private val redis: ReactiveStringRedisTemplate,
     private val keyPrefix: String = "verifier",
-    private val ttl: Duration = Duration.ofMinutes(30),
 ) {
 
     private val values = redis.opsForValue()
@@ -79,7 +77,7 @@ class PresentationRedisRepo(
             val previous = readStoredPresentation(presentation.id)
             val stored = presentation.toStored(previous)
 
-            values.set(transactionKey(presentation.id), encode(stored), ttl).awaitSingle()
+            values.set(transactionKey(presentation.id), encode(stored)).awaitSingle()
             zSets.add(initiatedIndexKey(), presentation.id.value, presentation.initiatedAt.toEpochMilliseconds().toDouble()).awaitSingle()
 
             when (presentation) {
@@ -92,7 +90,7 @@ class PresentationRedisRepo(
                     val requestId = requireNotNull(stored.requestId) {
                         "RequestId must be persisted for active presentations"
                     }
-                    values.set(requestKey(RequestId(requestId)), presentation.id.value, ttl).awaitSingle()
+                    values.set(requestKey(RequestId(requestId)), presentation.id.value).awaitSingle()
                     zSets.add(incompleteIndexKey(), presentation.id.value, presentation.timeoutIndexScore()).awaitSingle()
                 }
             }
@@ -113,7 +111,6 @@ class PresentationRedisRepo(
         PublishPresentationEvent { event ->
             logEvent(event)
             lists.rightPush(eventsKey(event.transactionId), encode(StoredPresentationEventRecord.from(event.toRecord()))).awaitSingle()
-            redis.expire(eventsKey(event.transactionId), ttl).awaitSingle()
         }
     }
 
@@ -158,7 +155,7 @@ class PresentationRedisRepo(
 }
 
 @Serializable
-private data class StoredPresentation(
+internal data class StoredPresentation(
     val kind: StoredPresentationKind,
     val transactionId: String,
     val initiatedAt: Long,
@@ -177,7 +174,7 @@ private data class StoredPresentation(
     val walletResponse: StoredWalletResponse? = null,
     val responseCode: String? = null,
 ) {
-    fun toDomain(): Presentation {
+    internal fun toDomain(): Presentation {
         val requested = requested()
         return when (kind) {
             StoredPresentationKind.Requested -> requested
@@ -234,7 +231,7 @@ private data class StoredPresentation(
         )
 }
 
-private enum class StoredPresentationKind {
+internal enum class StoredPresentationKind {
     Requested,
     RequestObjectRetrieved,
     Submitted,
@@ -242,12 +239,12 @@ private enum class StoredPresentationKind {
 }
 
 @Serializable
-private data class StoredResponseMode(
+internal data class StoredResponseMode(
     val kind: StoredResponseModeKind,
     val expectedOrigins: List<String> = emptyList(),
     val ephemeralResponseEncryptionKey: String? = null,
 ) {
-    fun toDomain(): ResponseMode =
+    internal fun toDomain(): ResponseMode =
         when (kind) {
             StoredResponseModeKind.DirectPost -> ResponseMode.DirectPost
             StoredResponseModeKind.DirectPostJwt -> ResponseMode.DirectPostJwt(requireNotNull(ephemeralResponseEncryptionKey).toJwk())
@@ -257,7 +254,7 @@ private data class StoredResponseMode(
         }
 }
 
-private enum class StoredResponseModeKind {
+internal enum class StoredResponseModeKind {
     DirectPost,
     DirectPostJwt,
     DcApi,
@@ -265,42 +262,42 @@ private enum class StoredResponseModeKind {
 }
 
 @Serializable
-private data class StoredGetWalletResponseMethod(
+internal data class StoredGetWalletResponseMethod(
     val kind: StoredGetWalletResponseMethodKind,
     val redirectUriTemplate: String? = null,
 ) {
-    fun toDomain(): GetWalletResponseMethod =
+    internal fun toDomain(): GetWalletResponseMethod =
         when (kind) {
             StoredGetWalletResponseMethodKind.Poll -> GetWalletResponseMethod.Poll
             StoredGetWalletResponseMethodKind.Redirect -> GetWalletResponseMethod.Redirect(requireNotNull(redirectUriTemplate))
         }
 }
 
-private enum class StoredGetWalletResponseMethodKind {
+internal enum class StoredGetWalletResponseMethodKind {
     Poll,
     Redirect,
 }
 
 @Serializable
-private enum class StoredProfile {
+internal enum class StoredProfile {
     OpenId4VP,
     HAIP,
 }
 
-private fun StoredProfile.toDomain(): Profile =
+internal fun StoredProfile.toDomain(): Profile =
     when (this) {
         StoredProfile.OpenId4VP -> Profile.OpenId4VP
         StoredProfile.HAIP -> Profile.HAIP
     }
 
 @Serializable
-private data class StoredWalletResponse(
+internal data class StoredWalletResponse(
     val kind: StoredWalletResponseKind,
     val error: String? = null,
     val description: String? = null,
     val verifiablePresentations: Map<String, List<StoredVerifiablePresentation>>? = null,
 ) {
-    fun toDomain(): WalletResponse =
+    internal fun toDomain(): WalletResponse =
         when (kind) {
             StoredWalletResponseKind.Error -> WalletResponse.Error(requireNotNull(error), description)
             StoredWalletResponseKind.VpToken -> WalletResponse.VpToken(
@@ -312,28 +309,28 @@ private data class StoredWalletResponse(
         }
 }
 
-private enum class StoredWalletResponseKind {
+internal enum class StoredWalletResponseKind {
     Error,
     VpToken,
 }
 
 @Serializable
-private data class StoredVerifiablePresentation(
+internal data class StoredVerifiablePresentation(
     val format: String,
     val stringValue: String? = null,
     val jsonValue: JsonObject? = null,
 ) {
-    fun toDomain(): VerifiablePresentation =
+    internal fun toDomain(): VerifiablePresentation =
         stringValue?.let { VerifiablePresentation.Str(it, Format(format)) }
             ?: VerifiablePresentation.Json(requireNotNull(jsonValue), Format(format))
 }
 
 @Serializable
-private data class StoredPresentationEventRecord(
+internal data class StoredPresentationEventRecord(
     val timestamp: Long,
     val payload: JsonObject,
 ) {
-    fun toRecord(): PresentationEventRecord = PresentationEventRecord(fromEpochMilliseconds(timestamp), payload)
+    internal fun toRecord(): PresentationEventRecord = PresentationEventRecord(fromEpochMilliseconds(timestamp), payload)
 
     companion object {
         fun from(record: PresentationEventRecord) =
@@ -341,7 +338,7 @@ private data class StoredPresentationEventRecord(
     }
 }
 
-private fun Presentation.toStored(previous: StoredPresentation?): StoredPresentation =
+internal fun Presentation.toStored(previous: StoredPresentation?): StoredPresentation =
     when (this) {
         is Presentation.Requested -> StoredPresentation(
             kind = StoredPresentationKind.Requested,
@@ -400,7 +397,7 @@ private fun Presentation.toStored(previous: StoredPresentation?): StoredPresenta
         }
     }
 
-private fun ResponseMode.toStored(): StoredResponseMode =
+internal fun ResponseMode.toStored(): StoredResponseMode =
     when (this) {
         ResponseMode.DirectPost -> StoredResponseMode(StoredResponseModeKind.DirectPost)
         is ResponseMode.DirectPostJwt ->
@@ -423,7 +420,7 @@ private fun ResponseMode.toStored(): StoredResponseMode =
             )
     }
 
-private fun GetWalletResponseMethod.toStored(): StoredGetWalletResponseMethod =
+internal fun GetWalletResponseMethod.toStored(): StoredGetWalletResponseMethod =
     when (this) {
         GetWalletResponseMethod.Poll -> StoredGetWalletResponseMethod(StoredGetWalletResponseMethodKind.Poll)
         is GetWalletResponseMethod.Redirect ->
@@ -433,13 +430,13 @@ private fun GetWalletResponseMethod.toStored(): StoredGetWalletResponseMethod =
             )
     }
 
-private fun Profile.toStored(): StoredProfile =
+internal fun Profile.toStored(): StoredProfile =
     when (this) {
         Profile.OpenId4VP -> StoredProfile.OpenId4VP
         Profile.HAIP -> StoredProfile.HAIP
     }
 
-private fun WalletResponse.toStored(): StoredWalletResponse =
+internal fun WalletResponse.toStored(): StoredWalletResponse =
     when (this) {
         is WalletResponse.Error ->
             StoredWalletResponse(
@@ -456,7 +453,7 @@ private fun WalletResponse.toStored(): StoredWalletResponse =
             )
     }
 
-private fun VerifiablePresentation.toStored(): StoredVerifiablePresentation =
+internal fun VerifiablePresentation.toStored(): StoredVerifiablePresentation =
     when (this) {
         is VerifiablePresentation.Str -> StoredVerifiablePresentation(format = format.value, stringValue = value)
         is VerifiablePresentation.Json -> StoredVerifiablePresentation(format = format.value, jsonValue = value)
