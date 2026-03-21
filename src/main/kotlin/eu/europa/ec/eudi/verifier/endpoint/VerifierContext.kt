@@ -113,7 +113,7 @@ internal class AppBeans : BeanRegistrarDsl({
     //
     registerBean { GenerateTransactionIdNimbus(64) }
     registerBean { GenerateRequestIdNimbus(64) }
-    when (env.getProperty("verifier.persistence.type", PersistenceType::class.java) ?: PersistenceType.Redis) {
+    when (env.getProperty("verifier.persistence.type", PersistenceType::class.java) ?: PersistenceType.InMemory) {
         PersistenceType.InMemory -> with(PresentationInMemoryRepo()) {
             registerBean { loadPresentationById }
             registerBean { loadPresentationByRequestId }
@@ -129,6 +129,7 @@ internal class AppBeans : BeanRegistrarDsl({
                 PresentationRedisRepo(
                     bean<ReactiveStringRedisTemplate>(),
                     env.getProperty("verifier.persistence.redis.keyPrefix", "verifier"),
+                    java.time.Duration.parse(env.getProperty("verifier.persistence.redis.ttl", "PT30M")),
                 )
             }
             registerBean { bean<PresentationRedisRepo>().loadPresentationById }

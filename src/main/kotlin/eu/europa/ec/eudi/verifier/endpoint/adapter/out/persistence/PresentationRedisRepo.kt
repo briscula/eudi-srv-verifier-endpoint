@@ -31,6 +31,7 @@ import org.springframework.data.redis.core.ReactiveStringRedisTemplate
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.time.Duration
 import java.util.Base64
 import kotlin.time.Instant
 import kotlin.time.Instant.Companion.fromEpochMilliseconds
@@ -40,6 +41,7 @@ import kotlinx.coroutines.reactor.awaitSingleOrNull
 class PresentationRedisRepo(
     private val redis: ReactiveStringRedisTemplate,
     private val keyPrefix: String = "verifier",
+    private val ttl: Duration = Duration.ofMinutes(30),
 ) {
 
     private val values = redis.opsForValue()
@@ -77,7 +79,7 @@ class PresentationRedisRepo(
             val previous = readStoredPresentation(presentation.id)
             val stored = presentation.toStored(previous)
 
-            values.set(transactionKey(presentation.id), encode(stored)).awaitSingle()
+            values.set(transactionKey(presentation.id), encode(stored), ttl).awaitSingle()
             zSets.add(initiatedIndexKey(), presentation.id.value, presentation.initiatedAt.toEpochMilliseconds().toDouble()).awaitSingle()
 
             when (presentation) {
@@ -90,7 +92,7 @@ class PresentationRedisRepo(
                     val requestId = requireNotNull(stored.requestId) {
                         "RequestId must be persisted for active presentations"
                     }
-                    values.set(requestKey(RequestId(requestId)), presentation.id.value).awaitSingle()
+                    values.set(requestKey(RequestId(requestId)), presentation.id.value, ttl).awaitSingle()
                     zSets.add(incompleteIndexKey(), presentation.id.value, presentation.timeoutIndexScore()).awaitSingle()
                 }
             }
@@ -111,6 +113,7 @@ class PresentationRedisRepo(
         PublishPresentationEvent { event ->
             logEvent(event)
             lists.rightPush(eventsKey(event.transactionId), encode(StoredPresentationEventRecord.from(event.toRecord()))).awaitSingle()
+            redis.expire(eventsKey(event.transactionId), ttl).awaitSingle()
         }
     }
 
@@ -141,7 +144,7 @@ class PresentationRedisRepo(
             is Presentation.Requested -> initiatedAt.toEpochMilliseconds().toDouble()
             is Presentation.RequestObjectRetrieved -> requestObjectRetrievedAt.toEpochMilliseconds().toDouble()
             is Presentation.Submitted -> initiatedAt.toEpochMilliseconds().toDouble()
-            is Presentation.TimedOut -> Double.NaN
+            is Presentation.TimedOut -> error("TimedOut presentations have no timeout index score")
         }
 
     private fun transactionKey(id: TransactionId): String = "$keyPrefix:presentation:tx:${id.value}"
@@ -363,13 +366,13 @@ private fun Presentation.toStored(previous: StoredPresentation?): StoredPresenta
             requestObjectRetrievedAt = requestObjectRetrievedAt.toEpochMilliseconds(),
             query = query,
             transactionData = transactionData?.map { it.base64Url },
-            requestUriMethod = RequestUriMethod.Get,
+            requestUriMethod = previous?.requestUriMethod ?: RequestUriMethod.Get,
             nonce = nonce.value,
             responseMode = responseMode.toStored(),
             getWalletResponseMethod = getWalletResponseMethod.toStored(),
             issuerChain = issuerChain?.map(::encodeCertificate),
             profile = profile.toStored(),
-        ).copy(requestUriMethod = previous?.requestUriMethod ?: RequestUriMethod.Get)
+        )
 
         is Presentation.Submitted -> {
             val current = requireNotNull(previous) {
