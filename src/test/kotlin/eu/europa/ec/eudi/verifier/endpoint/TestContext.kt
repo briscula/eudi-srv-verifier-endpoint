@@ -43,6 +43,7 @@ import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTest
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.core.annotation.AliasFor
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.context.ContextConfiguration
 import kotlin.reflect.KClass
 
@@ -114,6 +115,7 @@ object TestContext {
 )
 @ContextConfiguration
 @AutoConfigureWebTestClient
+@TestPropertySource(properties = ["verifier.persistence.type=InMemory"])
 internal annotation class VerifierApplicationTest(
 
     /**

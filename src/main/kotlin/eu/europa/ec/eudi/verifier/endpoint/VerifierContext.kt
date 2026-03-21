@@ -46,6 +46,7 @@ import eu.europa.ec.eudi.verifier.endpoint.adapter.out.mso.DocumentValidator
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.mso.IssuerSignedItemsShouldBe
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.mso.ValidityInfoShouldBe
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.persistence.PresentationInMemoryRepo
+import eu.europa.ec.eudi.verifier.endpoint.adapter.out.persistence.PresentationRedisRepo
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.presentation.ValidateSdJwtVcOrMsoMdocVerifiablePresentation
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.qrcode.GenerateQrCodeFromData
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.sdjwtvc.LookupTypeMetadataFromUrl
@@ -81,6 +82,7 @@ import org.springframework.http.codec.json.KotlinSerializationJsonDecoder
 import org.springframework.http.codec.json.KotlinSerializationJsonEncoder
 import org.springframework.security.config.web.server.ServerHttpSecurity
 import org.springframework.security.config.web.server.invoke
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
 import java.net.URL
@@ -111,14 +113,32 @@ internal class AppBeans : BeanRegistrarDsl({
     //
     registerBean { GenerateTransactionIdNimbus(64) }
     registerBean { GenerateRequestIdNimbus(64) }
-    with(PresentationInMemoryRepo()) {
-        registerBean { loadPresentationById }
-        registerBean { loadPresentationByRequestId }
-        registerBean { storePresentation }
-        registerBean { loadIncompletePresentationsOlderThan }
-        registerBean { loadPresentationEvents }
-        registerBean { publishPresentationEvent }
-        registerBean { deletePresentationsInitiatedBefore }
+    when (env.getProperty("verifier.persistence.type", PersistenceType::class.java) ?: PersistenceType.Redis) {
+        PersistenceType.InMemory -> with(PresentationInMemoryRepo()) {
+            registerBean { loadPresentationById }
+            registerBean { loadPresentationByRequestId }
+            registerBean { storePresentation }
+            registerBean { loadIncompletePresentationsOlderThan }
+            registerBean { loadPresentationEvents }
+            registerBean { publishPresentationEvent }
+            registerBean { deletePresentationsInitiatedBefore }
+        }
+
+        PersistenceType.Redis -> {
+            registerBean {
+                PresentationRedisRepo(
+                    bean<ReactiveStringRedisTemplate>(),
+                    env.getProperty("verifier.persistence.redis.keyPrefix", "verifier"),
+                )
+            }
+            registerBean { bean<PresentationRedisRepo>().loadPresentationById }
+            registerBean { bean<PresentationRedisRepo>().loadPresentationByRequestId }
+            registerBean { bean<PresentationRedisRepo>().storePresentation }
+            registerBean { bean<PresentationRedisRepo>().loadIncompletePresentationsOlderThan }
+            registerBean { bean<PresentationRedisRepo>().loadPresentationEvents }
+            registerBean { bean<PresentationRedisRepo>().publishPresentationEvent }
+            registerBean { bean<PresentationRedisRepo>().deletePresentationsInitiatedBefore }
+        }
     }
 
     registerBean {
@@ -694,6 +714,11 @@ private enum class TypeMetadataPolicyEnum {
     Optional,
     AlwaysRequired,
     RequiredFor,
+}
+
+private enum class PersistenceType {
+    InMemory,
+    Redis,
 }
 
 @ConfigurationProperties("verifier")

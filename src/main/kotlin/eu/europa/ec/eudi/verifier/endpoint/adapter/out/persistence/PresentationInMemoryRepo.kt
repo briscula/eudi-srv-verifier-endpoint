@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 data class PresentationStoredEntry(
     val presentation: Presentation,
-    val events: NonEmptyList<PresentationEvent>?,
+    val events: NonEmptyList<PresentationEventRecord>?,
 )
 
 /**
@@ -86,8 +86,8 @@ class PresentationInMemoryRepo(
                 "Cannot publish event without a presentation"
             }
             val presentationEvents = when (val existingEvents = presentationAndEvent.events) {
-                null -> nonEmptyListOf(event)
-                else -> existingEvents + event
+                null -> nonEmptyListOf(event.toRecord())
+                else -> existingEvents + event.toRecord()
             }
             presentations[transactionId] = presentationAndEvent.copy(events = presentationEvents)
         }
