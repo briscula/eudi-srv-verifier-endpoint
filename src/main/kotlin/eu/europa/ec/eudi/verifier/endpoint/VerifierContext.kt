@@ -81,10 +81,14 @@ import org.springframework.core.env.getProperty
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate
 import org.springframework.http.codec.json.KotlinSerializationJsonDecoder
 import org.springframework.http.codec.json.KotlinSerializationJsonEncoder
+import org.springframework.http.HttpStatus
 import org.springframework.security.config.web.server.ServerHttpSecurity
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder
 import org.springframework.security.config.web.server.invoke
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
+import org.springframework.web.server.ServerWebExchange
+import org.springframework.web.server.WebFilter
 import java.net.URL
 import java.security.KeyStore
 import java.security.cert.TrustAnchor
@@ -434,6 +438,7 @@ internal class AppBeans : BeanRegistrarDsl({
     }
     registerBean {
         val http = bean<ServerHttpSecurity>()
+        val apiKeyAuthenticationFilter = apiKeyAuthenticationFilter(env)
         http {
             cors { // cross-origin resource sharing configuration
                 configurationSource = CorsConfigurationSource {
@@ -455,12 +460,43 @@ internal class AppBeans : BeanRegistrarDsl({
                 }
             }
             csrf { disable() } // cross-site request forgery disabled
+            httpBasic { disable() }
+            formLogin { disable() }
+            logout { disable() }
             authorizeExchange {
-                authorize(anyExchange, permitAll)
+                authorize("/", permitAll)
+                authorize("/swagger-ui", permitAll)
+                authorize("/webjars/**", permitAll)
+                authorize("/public/**", permitAll)
+                authorize("/wallet/**", permitAll)
+                authorize("/utilities/**", permitAll)
+                authorize("/ui/**", permitAll)
+                authorize(anyExchange, denyAll)
             }
+            addFilterAt(apiKeyAuthenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION)
         }
     }
 })
+
+private fun apiKeyAuthenticationFilter(env: Environment): WebFilter {
+    val apiKey = env.getRequiredProperty("verifier.apiKey")
+    return WebFilter { exchange: ServerWebExchange, chain ->
+        val path = exchange.request.path.value()
+        if (!path.startsWith("/ui/")) {
+            chain.filter(exchange)
+        } else {
+            val presentedApiKey = exchange.request.headers.getFirst(API_KEY_HEADER)
+            if (presentedApiKey == apiKey) {
+                chain.filter(exchange)
+            } else {
+                exchange.response.statusCode = HttpStatus.UNAUTHORIZED
+                exchange.response.setComplete()
+            }
+        }
+    }
+}
+
+private const val API_KEY_HEADER = "X-API-Key"
 
 private fun SupplierContextDsl<*>.deviceResponseValidator(
     isChainTrustedForContext: IsChainTrustedForContextF<NonEmptyList<X509Certificate>, VerificationContext, TrustAnchor>,

@@ -48,6 +48,7 @@ import org.springframework.test.context.TestPropertySource
 import kotlin.reflect.KClass
 
 object TestContext {
+    const val verifierApiKey = "test-api-key"
     private val testDate = LocalDateTime(1974, 11, 2, 10, 5, 33).toInstant(TimeZone.UTC)
     val testClock: Clock = Clock.fixed(testDate, TimeZone.UTC)
     val testTransactionId = TransactionId("SampleTxId")
@@ -115,7 +116,7 @@ object TestContext {
 )
 @ContextConfiguration
 @AutoConfigureWebTestClient
-@TestPropertySource(properties = ["verifier.persistence.type=InMemory"])
+@TestPropertySource(properties = ["verifier.persistence.type=InMemory", "verifier.apiKey=${TestContext.verifierApiKey}"])
 internal annotation class VerifierApplicationTest(
 
     /**
