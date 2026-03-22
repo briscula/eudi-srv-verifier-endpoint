@@ -15,9 +15,10 @@
  */
 package eu.europa.ec.eudi.verifier.endpoint.port.out.persistence
 
-import arrow.core.NonEmptyList
-import eu.europa.ec.eudi.verifier.endpoint.domain.TransactionId
+import kotlinx.serialization.json.JsonObject
+import kotlin.time.Instant
 
-fun interface LoadPresentationEvents {
-    suspend operator fun invoke(id: TransactionId): NonEmptyList<PresentationEventRecord>?
-}
+data class PresentationEventRecord(
+    val timestamp: Instant,
+    val payload: JsonObject,
+)

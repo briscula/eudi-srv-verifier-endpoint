@@ -46,6 +46,7 @@ import eu.europa.ec.eudi.verifier.endpoint.adapter.out.mso.DocumentValidator
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.mso.IssuerSignedItemsShouldBe
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.mso.ValidityInfoShouldBe
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.persistence.PresentationInMemoryRepo
+import eu.europa.ec.eudi.verifier.endpoint.adapter.out.persistence.PresentationRedisRepo
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.presentation.ValidateSdJwtVcOrMsoMdocVerifiablePresentation
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.qrcode.GenerateQrCodeFromData
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.sdjwtvc.LookupTypeMetadataFromUrl
@@ -77,12 +78,17 @@ import org.springframework.boot.context.properties.bind.Name
 import org.springframework.boot.http.codec.CodecCustomizer
 import org.springframework.core.env.Environment
 import org.springframework.core.env.getProperty
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate
+import org.springframework.http.HttpStatus
 import org.springframework.http.codec.json.KotlinSerializationJsonDecoder
 import org.springframework.http.codec.json.KotlinSerializationJsonEncoder
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder
 import org.springframework.security.config.web.server.ServerHttpSecurity
 import org.springframework.security.config.web.server.invoke
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
+import org.springframework.web.server.ServerWebExchange
+import org.springframework.web.server.WebFilter
 import java.net.URL
 import java.security.KeyStore
 import java.security.cert.TrustAnchor
@@ -111,14 +117,32 @@ internal class AppBeans : BeanRegistrarDsl({
     //
     registerBean { GenerateTransactionIdNimbus(64) }
     registerBean { GenerateRequestIdNimbus(64) }
-    with(PresentationInMemoryRepo()) {
-        registerBean { loadPresentationById }
-        registerBean { loadPresentationByRequestId }
-        registerBean { storePresentation }
-        registerBean { loadIncompletePresentationsOlderThan }
-        registerBean { loadPresentationEvents }
-        registerBean { publishPresentationEvent }
-        registerBean { deletePresentationsInitiatedBefore }
+    when (env.getProperty("verifier.persistence.type", PersistenceType::class.java) ?: PersistenceType.Redis) {
+        PersistenceType.InMemory -> with(PresentationInMemoryRepo()) {
+            registerBean { loadPresentationById }
+            registerBean { loadPresentationByRequestId }
+            registerBean { storePresentation }
+            registerBean { loadIncompletePresentationsOlderThan }
+            registerBean { loadPresentationEvents }
+            registerBean { publishPresentationEvent }
+            registerBean { deletePresentationsInitiatedBefore }
+        }
+
+        PersistenceType.Redis -> {
+            registerBean {
+                PresentationRedisRepo(
+                    bean<ReactiveStringRedisTemplate>(),
+                    env.getProperty("verifier.persistence.redis.keyPrefix", "verifier"),
+                )
+            }
+            registerBean { bean<PresentationRedisRepo>().loadPresentationById }
+            registerBean { bean<PresentationRedisRepo>().loadPresentationByRequestId }
+            registerBean { bean<PresentationRedisRepo>().storePresentation }
+            registerBean { bean<PresentationRedisRepo>().loadIncompletePresentationsOlderThan }
+            registerBean { bean<PresentationRedisRepo>().loadPresentationEvents }
+            registerBean { bean<PresentationRedisRepo>().publishPresentationEvent }
+            registerBean { bean<PresentationRedisRepo>().deletePresentationsInitiatedBefore }
+        }
     }
 
     registerBean {
@@ -414,6 +438,7 @@ internal class AppBeans : BeanRegistrarDsl({
     }
     registerBean {
         val http = bean<ServerHttpSecurity>()
+        val apiKeyAuthenticationFilter = apiKeyAuthenticationFilter(env)
         http {
             cors { // cross-origin resource sharing configuration
                 configurationSource = CorsConfigurationSource {
@@ -435,9 +460,43 @@ internal class AppBeans : BeanRegistrarDsl({
                 }
             }
             csrf { disable() } // cross-site request forgery disabled
+            httpBasic { disable() }
+            formLogin { disable() }
+            logout { disable() }
+            authorizeExchange {
+                authorize("/", permitAll)
+                authorize("/swagger-ui", permitAll)
+                authorize("/webjars/**", permitAll)
+                authorize("/public/**", permitAll)
+                authorize("/wallet/**", permitAll)
+                authorize("/utilities/**", permitAll)
+                authorize("/ui/**", permitAll)
+                authorize(anyExchange, denyAll)
+            }
+            addFilterAt(apiKeyAuthenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION)
         }
     }
 })
+
+private fun apiKeyAuthenticationFilter(env: Environment): WebFilter {
+    val apiKey = env.getRequiredProperty("verifier.apiKey")
+    return WebFilter { exchange: ServerWebExchange, chain ->
+        val path = exchange.request.path.value()
+        if (!path.startsWith("/ui/")) {
+            chain.filter(exchange)
+        } else {
+            val presentedApiKey = exchange.request.headers.getFirst(API_KEY_HEADER)
+            if (presentedApiKey == apiKey) {
+                chain.filter(exchange)
+            } else {
+                exchange.response.statusCode = HttpStatus.UNAUTHORIZED
+                exchange.response.setComplete()
+            }
+        }
+    }
+}
+
+private const val API_KEY_HEADER = "X-API-Key"
 
 private fun SupplierContextDsl<*>.deviceResponseValidator(
     isChainTrustedForContext: IsChainTrustedForContextF<NonEmptyList<X509Certificate>, VerificationContext, TrustAnchor>,
@@ -529,6 +588,14 @@ private fun verifierConfig(environment: Environment): VerifierConfig {
     val responseModeOption =
         environment.getProperty("verifier.response.mode", ResponseModeOption::class.java)
             ?: ResponseModeOption.DirectPostJwt
+    val expectedOrigins = environment.getOptionalList(
+        "verifier.expected-origins",
+        filter = String::isNotBlank,
+        transform = String::trim,
+    ) ?: emptyList()
+    require(responseModeOption !in listOf(ResponseModeOption.DcApi, ResponseModeOption.DcApiJwt) || expectedOrigins.isNotEmpty()) {
+        "'verifier.expected-origins' must not be empty when response mode is $responseModeOption"
+    }
 
     val maxAge = environment.getProperty("verifier.maxAge")?.let { Duration.parse(it) } ?: 5.minutes
 
@@ -550,6 +617,7 @@ private fun verifierConfig(environment: Environment): VerifierConfig {
         requestUriMethod = requestUriMethod,
         responseUriBuilder = WalletApi.directPost(publicUrl),
         responseModeOption = responseModeOption,
+        expectedOrigins = expectedOrigins,
         maxAge = maxAge,
         clientMetaData = environment.clientMetaData(),
         transactionDataHashAlgorithm = transactionDataHashAlgorithm,
@@ -682,6 +750,11 @@ private enum class TypeMetadataPolicyEnum {
     Optional,
     AlwaysRequired,
     RequiredFor,
+}
+
+private enum class PersistenceType {
+    InMemory,
+    Redis,
 }
 
 @ConfigurationProperties("verifier")

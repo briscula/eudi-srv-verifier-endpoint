@@ -44,9 +44,11 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.core.annotation.AliasFor
 import org.springframework.test.context.ContextConfiguration
+import org.springframework.test.context.TestPropertySource
 import kotlin.reflect.KClass
 
 object TestContext {
+    const val verifierApiKey = "test-api-key"
     private val testDate = LocalDateTime(1974, 11, 2, 10, 5, 33).toInstant(TimeZone.UTC)
     val testClock: Clock = Clock.fixed(testDate, TimeZone.UTC)
     val testTransactionId = TransactionId("SampleTxId")
@@ -73,7 +75,7 @@ object TestContext {
             ),
         ),
     )
-    private val accessCertificate: AccessCertificate = AccessCertificate(ecJwk, JWSAlgorithm.ES512)
+    private val accessCertificate: AccessCertificate = AccessCertificate(ecJwk, JWSAlgorithm.ES256)
     val verifierId = VerifierId.X509SanDns("verifier", accessCertificate)
     val createJar: CreateJarNimbus = CreateJarNimbus()
     val signedRequestObjectVerifier: JWSVerifier = ECDSAVerifier(ecJwk)
@@ -114,6 +116,7 @@ object TestContext {
 )
 @ContextConfiguration
 @AutoConfigureWebTestClient
+@TestPropertySource(properties = ["verifier.persistence.type=InMemory", "verifier.apiKey=${TestContext.verifierApiKey}"])
 internal annotation class VerifierApplicationTest(
 
     /**

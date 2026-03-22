@@ -65,6 +65,23 @@ To start the service locally you can execute
 ```bash
 ./gradlew bootRun
 ```
+
+The backend now uses Redis for persistence by default. The sample `application.properties`
+is configured for a hosted Redis Cloud instance through Spring Data Redis / Lettuce.
+Credentials should be provided through environment variables, not committed config.
+Presentation lifetime is still controlled by the verifier timeout and cleanup settings,
+not by Redis key expiry.
+To run locally, set:
+```bash
+SPRING_DATA_REDIS_HOST=<HOST>
+SPRING_DATA_REDIS_PORT=<PORT>
+SPRING_DATA_REDIS_USERNAME=<USERNAME>
+SPRING_DATA_REDIS_PASSWORD=<PASSWORD>
+SPRING_DATA_REDIS_SSL_ENABLED=true
+VERIFIER_PERSISTENCE_TYPE=redis
+VERIFIER_PERSISTENCE_REDIS_KEYPREFIX=verifier
+```
+
 To build a local docker image of the service execute
 ```bash
 ./gradlew bootBuildImage
@@ -96,6 +113,18 @@ docker-compose down
 
 The 'verifier' service can be configured by setting its configuration properties described [here](#configuration) by setting them as environment 
 variables of the service in [docker-compose.yaml](docker/docker-compose.yaml)  
+
+For Redis-backed persistence, configure the backend with:
+```yaml
+    environment:
+      VERIFIER_PERSISTENCE_TYPE: "redis"
+      VERIFIER_PERSISTENCE_REDIS_KEYPREFIX: "verifier"
+      SPRING_DATA_REDIS_HOST: "redis-15551.c256.us-east-1-2.ec2.cloud.redislabs.com"
+      SPRING_DATA_REDIS_PORT: "15551"
+      SPRING_DATA_REDIS_USERNAME: "<REDIS_USERNAME>"
+      SPRING_DATA_REDIS_PASSWORD: "<REDIS_PASSWORD>"
+      SPRING_DATA_REDIS_SSL_ENABLED: "true"
+```
 
 > [!IMPORTANT]  
 > Starting with v0.7.0, the Docker image for Verifier Endpoint is published as `ghcr.io/eu-digital-identity-wallet/eudi-srv-verifier-endpoint`.

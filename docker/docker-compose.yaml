@@ -4,10 +4,16 @@ services:
   verifier:
     image: ghcr.io/eu-digital-identity-wallet/eudi-srv-verifier-endpoint:latest
     container_name: verifier-backend
+    depends_on:
+      - redis
     ports:
       - "8080:8080"
     environment:
       VERIFIER_PUBLICURL: "https://10.240.174.10"
+      VERIFIER_PERSISTENCE_TYPE: "redis"
+      VERIFIER_PERSISTENCE_REDIS_KEYPREFIX: "verifier"
+      SPRING_DATA_REDIS_HOST: "redis"
+      SPRING_DATA_REDIS_PORT: "6379"
       VERIFIER_RESPONSE_MODE: "DirectPost"
       VERIFIER_ACCESS_CERTIFICATE_SIGNING_ALGORITHM: "ES512"
       VERIFIER_ACCESS_CERTIFICATE_KEYSTORE: "file:///certs/keystore.jks"
@@ -35,3 +41,9 @@ services:
     volumes:
       - ./haproxy.conf:/usr/local/etc/haproxy/haproxy.cfg
       - ./haproxy.pem:/etc/ssl/certs/mysite.pem
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: verifier-redis
+    ports:
+      - "6379:6379"

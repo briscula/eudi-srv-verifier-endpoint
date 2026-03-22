@@ -77,6 +77,12 @@ enum class ResponseModeTO {
 
     @SerialName(OpenId4VPSpec.RESPONSE_MODE_DIRECT_POST_JWT)
     DirectPostJwt,
+
+    @SerialName(OpenId4VPSpec.RESPONSE_MODE_DC_API)
+    DcApi,
+
+    @SerialName(OpenId4VPSpec.RESPONSE_MODE_DC_API_JWT)
+    DcApiJwt,
 }
 
 /**
@@ -114,6 +120,7 @@ data class InitTransactionTO(
     @SerialName(OpenId4VPSpec.DCQL_QUERY) val dcqlQuery: DCQL? = null,
     @SerialName(OpenId4VPSpec.NONCE) val nonce: String? = null,
     @SerialName(RFC6749.RESPONSE_MODE) val responseMode: ResponseModeTO? = null,
+    @SerialName(OpenId4VPSpec.EXPECTED_ORIGINS) val expectedOrigins: List<String>? = null,
     @SerialName("jar_mode") val jarMode: EmbedModeTO? = null,
     @SerialName(OpenId4VPSpec.REQUEST_URI_METHOD) val requestUriMethod: RequestUriMethodTO? = null,
     @SerialName("wallet_response_redirect_uri_template") val redirectUriTemplate: String? = null,
@@ -389,14 +396,24 @@ class InitTransactionLive(
         val responseModeOption = when (initTransaction.responseMode) {
             ResponseModeTO.DirectPost -> ResponseModeOption.DirectPost
             ResponseModeTO.DirectPostJwt -> ResponseModeOption.DirectPostJwt
+            ResponseModeTO.DcApi -> ResponseModeOption.DcApi
+            ResponseModeTO.DcApiJwt -> ResponseModeOption.DcApiJwt
             null -> verifierConfig.responseModeOption
         }
+
+        val origins = initTransaction.expectedOrigins?.takeIf { it.isNotEmpty() }
+            ?: verifierConfig.expectedOrigins
 
         return when (responseModeOption) {
             ResponseModeOption.DirectPost -> ResponseMode.DirectPost
             ResponseModeOption.DirectPostJwt -> {
                 val responseEncryptionKey = generateEphemeralEncryptionKeyPair().getOrThrow()
                 ResponseMode.DirectPostJwt(responseEncryptionKey)
+            }
+            ResponseModeOption.DcApi -> ResponseMode.DcApi(origins)
+            ResponseModeOption.DcApiJwt -> {
+                val responseEncryptionKey = generateEphemeralEncryptionKeyPair().getOrThrow()
+                ResponseMode.DcApiJwt(origins, responseEncryptionKey)
             }
         }
     }

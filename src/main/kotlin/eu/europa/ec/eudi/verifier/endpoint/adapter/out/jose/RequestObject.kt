@@ -27,6 +27,7 @@ internal data class RequestObject(
     val nonce: String,
     val responseMode: String,
     val responseUri: URL?,
+    val expectedOrigins: List<String>? = null,
     val aud: List<String>,
     val state: String,
     val issuedAt: Instant,
@@ -54,8 +55,19 @@ internal fun requestObjectFromDomain(
         responseMode = when (presentation.responseMode) {
             ResponseMode.DirectPost -> OpenId4VPSpec.RESPONSE_MODE_DIRECT_POST
             is ResponseMode.DirectPostJwt -> OpenId4VPSpec.RESPONSE_MODE_DIRECT_POST_JWT
+            is ResponseMode.DcApi -> OpenId4VPSpec.RESPONSE_MODE_DC_API
+            is ResponseMode.DcApiJwt -> OpenId4VPSpec.RESPONSE_MODE_DC_API_JWT
         },
-        responseUri = verifierConfig.responseUriBuilder(presentation.requestId),
+        responseUri = when (presentation.responseMode) {
+            ResponseMode.DirectPost, is ResponseMode.DirectPostJwt ->
+                verifierConfig.responseUriBuilder(presentation.requestId)
+            is ResponseMode.DcApi, is ResponseMode.DcApiJwt -> null
+        },
+        expectedOrigins = when (val mode = presentation.responseMode) {
+            is ResponseMode.DcApi -> mode.expectedOrigins
+            is ResponseMode.DcApiJwt -> mode.expectedOrigins
+            else -> null
+        },
         issuedAt = clock.now(),
         transactionData = transactionData,
     )

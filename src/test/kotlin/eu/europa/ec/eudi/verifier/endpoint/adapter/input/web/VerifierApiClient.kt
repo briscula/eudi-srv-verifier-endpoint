@@ -15,6 +15,7 @@
  */
 package eu.europa.ec.eudi.verifier.endpoint.adapter.input.web
 
+import eu.europa.ec.eudi.verifier.endpoint.TestContext
 import eu.europa.ec.eudi.verifier.endpoint.adapter.input.web.VerifierApi.Companion.TRANSACTION_ID_HEADER
 import eu.europa.ec.eudi.verifier.endpoint.domain.ResponseCode
 import eu.europa.ec.eudi.verifier.endpoint.domain.TransactionId
@@ -35,6 +36,7 @@ import org.springframework.test.web.reactive.server.expectBody
 object VerifierApiClient {
 
     private val log: Logger = LoggerFactory.getLogger(VerifierApiClient::class.java)
+    private const val API_KEY_HEADER = "X-API-Key"
 
     fun loadInitTransactionTO(testResource: String): InitTransactionTO =
         Json.decodeFromString(TestUtils.loadResource(testResource))
@@ -52,6 +54,7 @@ object VerifierApiClient {
         val responseSpec = client.post().uri(VerifierApi.INIT_TRANSACTION_PATH_V2)
             .contentType(MediaType.APPLICATION_JSON)
             .accept(accept)
+            .header(API_KEY_HEADER, TestContext.verifierApiKey)
             .bodyValue(initTransactionTO)
             .exchange()
 
@@ -94,6 +97,7 @@ object VerifierApiClient {
         // when
         val responseSpec = client.get().uri(walletResponseUri)
             .accept(MediaType.APPLICATION_JSON)
+            .header(API_KEY_HEADER, TestContext.verifierApiKey)
             .exchange()
         val returnResult = responseSpec.expectBody<WalletResponseTO>().returnResult()
         returnResult.status.also { log.info("response status: $it") }
@@ -119,6 +123,7 @@ object VerifierApiClient {
         // when
         val responseSpec = client.get().uri(walletResponseUri)
             .accept(MediaType.APPLICATION_JSON)
+            .header(API_KEY_HEADER, TestContext.verifierApiKey)
             .exchange()
         return responseSpec.expectBody<WalletResponseTO>().returnResult()
     }
